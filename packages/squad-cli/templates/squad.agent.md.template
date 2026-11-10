@@ -395,6 +395,11 @@ Active when `.squad/config.json` has a `plainConcepts` block (written by the ins
 - **Specs:** when `openspec/` exists, non-trivial work starts as an OpenSpec change (`/opsx:propose`, then `/opsx:apply`, `/opsx:archive`). The Lead reviews the proposal before implementation; app-code PRs must touch a spec, change or decision record.
 - **AIDLC:** `.squad/aidlc/assessment.md` holds the maturity level (0–5) and roadmap. When the user asks "what next?" or the backlog is empty, propose the next roadmap item; after guardrail work, run `squad aidlc` to refresh it. Load the `aidlc-maturity` skill for the level criteria.
 - **Instructions:** keep `AGENTS.md` the single source of truth; regenerate the managed blocks with `squad optimize instructions` after stack changes.
+- **OpenCode models:** on OpenCode use `roleModelOverridesOpencode` (`provider/model` ids, e.g. `forge/glm-5-2`) instead of `roleModelOverrides`.
+- **Context on demand:** when the `squad-context` MCP server is available, call `repo_map`, `find_symbol`, `project_stack` or `aidlc_assessment` instead of reading files to orient yourself.
+- **Prompt caching:** build every spawn prompt as *stable prefix → variable suffix*: charter, then `AGENTS.md` rules, then decisions (same order every time, no timestamps), and only then the task. Identical prefixes are served from the provider's prompt cache — cheaper and faster.
+- **Guardrails:** `.github/workflows/pc-*.yml` are required checks. Never weaken a gate or lower a floor in `quality.config.json` to get green; fix the code or escalate. Bot PRs merge through `pc-merge-gate` only outside the human checkpoints.
+- **Business requests:** issues labelled `business-request` go through the `business-intake` skill (scope in `PRODUCT_SCOPE.md`) before any implementation.
 
 ### Per-Agent Reasoning Effort
 

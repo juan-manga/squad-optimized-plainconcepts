@@ -28,10 +28,18 @@ import { writeRepoMap } from './repomap.js';
 import { recommendSkills, installSkills, SKILL_CATALOG, type SkillRecommendation } from './skills-catalog.js';
 import { setupOpenSpec, setupRtk, setupGraphify, type ToolResult } from './tools.js';
 import { writeAidlcReport } from './aidlc.js';
+import { generateGates } from './gates.js';
+import { generateFeatures } from './specs.js';
+import { generatePlatform, generateIntake } from './platform.js';
+import { registerContextMcp } from './context-mcp.js';
+import { buildUsageReport, writeForgeProvider, opencodeModelId, FORGE, type OpenCodeProvider } from './models-catalog.js';
 
 const CYAN = '\x1b[36m';
 
+/** Default hosts. Cursor and Codex are opt-in (Squad projects them too). */
 export const PC_HOSTS = ['copilot', 'claude', 'opencode'] as const;
+export const PC_OPTIONAL_HOSTS = ['cursor', 'codex'] as const;
+const ALL_HOSTS: readonly string[] = [...PC_HOSTS, ...PC_OPTIONAL_HOSTS];
 
 /** Recommended model per tier (GitHub Copilot / Claude Code ids). */
 export const TIER_MODELS = {
@@ -52,6 +60,14 @@ export interface OptimizeOptions {
   /** 'recommended' | 'auto' | explicit role → model map */
   models?: 'recommended' | 'auto' | Partial<Record<TeamRoleCategory, string>>;
   defaultModel?: string;
+  /** Generate CI guardrails (quality gates, PR guardrails, merge gate). */
+  gates?: boolean;
+  /** Generate Platform contract + Maintenance-mode intake files. */
+  platform?: boolean;
+  /** Register the squad-context MCP server in .mcp.json. */
+  mcp?: boolean;
+  /** Model provider for OpenCode (github-copilot | anthropic | forge). */
+  provider?: OpenCodeProvider;
   /** Skip every network install (OpenSpec, skills, RTK, graphify). */
   offline?: boolean;
   /** Accept recommended answers without prompting. */
@@ -77,9 +93,16 @@ export function readOptimizeFlags(args: readonly string[]): OptimizeOptions & { 
     graphify: bool('graphify'),
     repomap: bool('repomap'),
     instructions: bool('instructions'),
+    gates: bool('gates'),
+    platform: bool('platform'),
+    mcp: bool('mcp'),
     offline: args.includes('--offline'),
     defaultModel: val('--default-model'),
   };
+  const provider = val('--provider');
+  if (provider === 'forge' || provider === 'anthropic' || provider === 'github-copilot') o.provider = provider;
+  const hosts = val('--hosts');
+  if (hosts) o.hosts = hosts === 'all' ? [...PC_HOSTS] : hosts.split(',').map((h) => h.trim()).filter((h) => ALL_HOSTS.includes(h));
   const skills = val('--skills');
   if (skills) o.skills = skills === 'recommended' || skills === 'none' ? skills : skills.split(',').map((s) => s.trim()).filter(Boolean);
   const models = val('--models');
@@ -119,9 +142,13 @@ async function askQuestions(o: OptimizeOptions, ask: Ask, root: string): Promise
   console.log();
 
   if (!o.hosts) {
-    const a = (await ask(`  AI hosts to support ${DIM}(copilot, claude, opencode)${RESET} [all]: `)).trim().toLowerCase();
-    o.hosts = a === '' || a === 'all' ? [...PC_HOSTS] : a.split(/[ ,]+/).filter((h) => (PC_HOSTS as readonly string[]).includes(h));
+    const a = (await ask(`  AI hosts to support ${DIM}(copilot, claude, opencode; optional: cursor, codex)${RESET} [copilot,claude,opencode]: `)).trim().toLowerCase();
+    o.hosts = a === '' || a === 'all' ? [...PC_HOSTS] : a.split(/[ ,]+/).filter((h) => ALL_HOSTS.includes(h));
     if (o.hosts.length === 0) o.hosts = [...PC_HOSTS];
+  }
+  if (o.hosts.includes('opencode') && !o.provider) {
+    const a = (await ask(`  Model provider for OpenCode ${DIM}(github-copilot, anthropic, forge = Plain Concepts gateway)${RESET} [github-copilot]: `)).trim().toLowerCase();
+    o.provider = a === 'forge' || a === 'anthropic' ? a : 'github-copilot';
   }
   o.openspec ??= await yesNo(ask, `Use ${BOLD}OpenSpec${RESET} for spec-driven changes (proposal → design → tasks → spec)?`, true);
 
@@ -160,7 +187,13 @@ async function askQuestions(o: OptimizeOptions, ask: Ask, root: string): Promise
   o.repomap ??= await yesNo(ask, 'Generate a token-budgeted repo map for agents (.squad/context/repomap.md)?', true);
   o.rtk ??= await yesNo(ask, `Enable ${BOLD}RTK${RESET} (compacts shell output, ~60–90% fewer tokens on git/test/build)?`, true);
   o.graphify ??= await yesNo(ask, `Enable ${BOLD}graphify${RESET} knowledge graph (needs Python; best for large repos)?`, stack.sourceFiles.length > 500);
+  o.mcp ??= await yesNo(ask, `Register the ${BOLD}squad-context${RESET} MCP server (repo map, stack, AIDLC, find_symbol on demand)?`, true);
   o.instructions ??= await yesNo(ask, 'Generate project instructions (AGENTS.md, copilot-instructions, CLAUDE.md)?', true);
+
+  console.log();
+  console.log(`  ${BOLD}Guardrails (AIDLC 3–5)${RESET}`);
+  o.gates ??= await yesNo(ask, `Add ${BOLD}CI guardrails${RESET} (TruffleHog, Trivy, Semgrep, SBOM, coverage floor, spec gate, diff check, merge gate)?`, true);
+  o.platform ??= await yesNo(ask, `Add ${BOLD}Plain Concepts Platform${RESET} files (.platform/contract.yml, PRODUCT_SCOPE.md, business request form)?`, true);
   return o;
 }
 
@@ -174,6 +207,10 @@ function withDefaults(o: OptimizeOptions, root: string): Required<Omit<OptimizeO
     repomap: o.repomap ?? true,
     instructions: o.instructions ?? true,
     models: o.models ?? 'recommended',
+    gates: o.gates ?? true,
+    platform: o.platform ?? true,
+    mcp: o.mcp ?? true,
+    provider: o.provider ?? 'github-copilot',
     offline: o.offline ?? false,
     defaultModel: o.defaultModel,
   };
@@ -192,6 +229,7 @@ function recordChoices(squadDir: string, o: ReturnType<typeof withDefaults>, ski
   try { cfg = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* new */ }
   cfg.plainConcepts = {
     hosts: o.hosts, openspec: o.openspec, rtk: o.rtk, graphify: o.graphify, repomap: o.repomap,
+    gates: o.gates, platform: o.platform, mcp: o.mcp, provider: o.provider,
     skills: skills.map((s) => s.id), optimizedAt: new Date().toISOString(),
   };
   fs.mkdirSync(squadDir, { recursive: true });
@@ -228,6 +266,13 @@ export async function applyOptimize(root: string, answers: OptimizeOptions): Pro
     const map = opts.models === 'recommended' ? recommendedRoleModels() : opts.models;
     writeRoleModelOverrides(squadDir, map);
     console.log(`${GREEN}✓${RESET} Model per role saved (.squad/config.json → roleModelOverrides)`);
+    if (opts.hosts.includes('opencode')) {
+      // OpenCode needs provider/model ids; keep a translated copy for the coordinator.
+      const file = path.join(squadDir, 'config.json');
+      const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
+      cfg.roleModelOverridesOpencode = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, opencodeModelId(v as string, opts.provider)]));
+      fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+    }
   }
   if (opts.defaultModel) writeModelPreference(squadDir, opts.defaultModel);
 
@@ -235,6 +280,22 @@ export async function applyOptimize(root: string, answers: OptimizeOptions): Pro
   if (opts.repomap) {
     const r = writeRepoMap(root);
     console.log(`${GREEN}✓${RESET} ${r.path} ${DIM}(${r.files} files, ~${r.approxTokens} tokens)${RESET}`);
+  }
+  if (opts.hosts.includes('opencode') && opts.provider === 'forge') {
+    const f = writeForgeProvider(root);
+    console.log(`${GREEN}✓${RESET} ${f} ${DIM}(Forge provider, key from ${FORGE.apiKeyEnv})${RESET}`);
+  }
+  if (opts.mcp) console.log(`${GREEN}✓${RESET} ${registerContextMcp(root)} ${DIM}(squad-context MCP server)${RESET}`);
+  if (opts.gates) {
+    const g = generateGates(root);
+    for (const f of g.written.filter((x) => !x.startsWith('.github/scripts/'))) console.log(`${GREEN}✓${RESET} ${f}`);
+    console.log(`${GREEN}✓${RESET} .github/scripts/pc-*.mjs ${DIM}(gate scripts)${RESET}`);
+  }
+  if (opts.platform) {
+    const p = generatePlatform(root);
+    const i = generateIntake(root);
+    for (const f of [...p.written, ...i.written]) console.log(`${GREEN}✓${RESET} ${f}`);
+    console.log(`${DIM}  Register in Project Health: ${p.healthCommand}${RESET}`);
   }
   // 3. Network installs, concurrently.
   const installed = { rtk: false, graphify: false };
@@ -271,13 +332,18 @@ export async function applyOptimize(root: string, answers: OptimizeOptions): Pro
   }
   recordChoices(squadDir, { ...opts, rtk: installed.rtk, graphify: installed.graphify }, skills);
 
+  // Executable specs from OpenSpec scenarios (no-op until specs exist).
+  const specs = generateFeatures(root);
+  if (specs.written.length) console.log(`${GREEN}✓${RESET} ${specs.written.length} feature file(s), ${specs.scenarios} scenario(s) from OpenSpec`);
+
   // 4. AIDLC assessment last, so it reflects everything above.
-  const { report, path: reportPath } = writeAidlcReport(root);
+  const usage = await buildUsageReport(root, { online: !opts.offline });
+  const { report, path: reportPath } = writeAidlcReport(root, usage.markdown);
   console.log(`${GREEN}✓${RESET} ${reportPath} ${DIM}— AIDLC level ${BOLD}${report.level}${RESET}${DIM}/5, next: ${report.next.slice(0, 2).map((c) => c.label).join('; ') || '—'}${RESET}`);
   console.log(`${DIM}  Optimizer finished in ${((Date.now() - started) / 1000).toFixed(1)}s${RESET}`);
 }
 
-/** `squad optimize [all|instructions|repomap|skills|tools|models] [flags]` */
+/** `squad optimize [all|instructions|repomap|skills|tools|models|gates|specs|platform|intake|mcp|usage] [flags]` */
 export async function runOptimizeCommand(root: string, args: string[]): Promise<void> {
   const sub = args[0] && !args[0].startsWith('-') ? args[0] : 'all';
   const flags = readOptimizeFlags(args);
@@ -326,6 +392,45 @@ export async function runOptimizeCommand(root: string, args: string[]): Promise<
       else writeRoleModelOverrides(path.join(root, '.squad'), map);
       console.log(`${GREEN}✓${RESET} roleModelOverrides ${flags.models === 'auto' ? 'cleared (auto)' : 'updated'}`);
       for (const c of ROLE_CATEGORIES) console.log(`  ${c.icon}  ${c.label.padEnd(26)} ${flags.models === 'auto' ? 'auto' : map[c.id] ?? 'auto'}`);
+      if (flags.provider === 'forge') console.log(`${GREEN}✓${RESET} ${writeForgeProvider(root)} (Forge provider for OpenCode)`);
+      return;
+    }
+    case 'gates': {
+      const g = generateGates(root, { force: args.includes('--force'), mergeGate: !args.includes('--no-merge-gate') });
+      g.written.forEach((f) => console.log(`${GREEN}✓${RESET} ${f}`));
+      g.skipped.forEach((f) => console.log(`${DIM}${f} exists — kept (use --force to overwrite)${RESET}`));
+      console.log(`\nNext: make every pc-quality-gates / pc-pr-guardrails job a required status check (Settings → Rules → Rulesets),`);
+      console.log(`enable "Allow auto-merge" for the merge gate, and ratchet quality.config.json coverage.lines up from the CI baseline.`);
+      return;
+    }
+    case 'specs': {
+      const r = generateFeatures(root);
+      r.written.forEach((f) => console.log(`${GREEN}✓${RESET} ${f}`));
+      r.skipped.forEach((f) => console.log(`${DIM}${f} is hand-written — kept${RESET}`));
+      console.log(r.written.length ? `${r.scenarios} scenario(s). Bind steps with Reqnroll (.NET), playwright-bdd / Cucumber (JS) or pytest-bdd (Python).` : 'No OpenSpec scenarios found in openspec/specs/*/spec.md.');
+      return;
+    }
+    case 'platform': {
+      const p = generatePlatform(root, args.includes('--force'));
+      p.written.forEach((f) => console.log(`${GREEN}✓${RESET} ${f}`));
+      p.skipped.forEach((f) => console.log(`${DIM}${f} exists — kept${RESET}`));
+      console.log(`Register in Project Health:\n  ${p.healthCommand}`);
+      return;
+    }
+    case 'intake': {
+      const i = generateIntake(root, args.includes('--force'));
+      i.written.forEach((f) => console.log(`${GREEN}✓${RESET} ${f}`));
+      i.skipped.forEach((f) => console.log(`${DIM}${f} exists — kept${RESET}`));
+      console.log('The business-intake skill triages issues labelled business-request against PRODUCT_SCOPE.md.');
+      return;
+    }
+    case 'mcp': {
+      console.log(`${GREEN}✓${RESET} ${registerContextMcp(root)} → squad-context (tools: repo_map, project_stack, aidlc_assessment, find_symbol)`);
+      return;
+    }
+    case 'usage': {
+      const u = await buildUsageReport(root, { online: !flags.offline });
+      console.log(u.markdown);
       return;
     }
     default: {
@@ -337,7 +442,7 @@ export async function runOptimizeCommand(root: string, args: string[]): Promise<
         rl = createInterface({ input: process.stdin, output: process.stdout });
       }
       try {
-        await runOptimize(root, { ...flags, hosts }, { interactive, ask: rl ? (q) => rl!.question(q) : undefined });
+        await runOptimize(root, { ...flags, hosts: flags.hosts ?? cfgHosts }, { interactive, ask: rl ? (q) => rl!.question(q) : undefined });
       } finally { rl?.close(); }
     }
   }

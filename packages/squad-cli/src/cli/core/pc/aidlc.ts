@@ -78,22 +78,22 @@ export function assessAidlc(root: string, stackIn?: ProjectStack): AidlcReport {
       fix: 'squad optimize repomap' },
     // ── Level 3: Guarded (PC Engineering L1) ────────────────────────
     { id: 'secrets', level: 3, label: 'Secret scanning in CI (TruffleHog/Gitleaks)', pass: ciHas('trufflehog', 'gitleaks', 'secret-scanning', 'detect-secrets'),
-      fix: 'Add TruffleHog to PR CI (Platform practice: Secrets)' },
+      fix: 'squad optimize gates (TruffleHog job)' },
     { id: 'vulns', level: 3, label: 'Vulnerability scanning (Trivy/Dependabot)', pass: ciHas('trivy', 'dependency-review', 'snyk', 'osv-scanner') || exists(root, '.github/dependabot.yml'),
-      fix: 'Add `trivy fs` (CRITICAL/HIGH) to PR CI (Platform practice: Vulnerabilities)' },
+      fix: 'squad optimize gates (Trivy job)' },
     { id: 'sast', level: 3, label: 'SAST (Semgrep/CodeQL)', pass: ciHas('semgrep', 'codeql', 'sonar'),
-      fix: 'Add `semgrep --error` to PR CI (Platform practice: SAST)' },
+      fix: 'squad optimize gates (Semgrep job)' },
     { id: 'spec-gate', level: 3, label: 'Spec-in-PR gate (app changes touch spec/change/ADR)', pass: ciHas('openspec', 'spec-gate', 'decision record', 'docs-impact'),
-      fix: 'Add a CI check failing app-code PRs that do not touch openspec/ or docs/decisions/' },
+      fix: 'squad optimize gates (pc-pr-guardrails spec gate)' },
     { id: 'docs', level: 3, label: 'Architecture + decision records', pass: exists(root, 'ARCHITECTURE.md', 'docs/architecture.md') && exists(root, 'docs/decisions', 'docs/adr', '.squad/decisions.md'),
       fix: 'Generate ARCHITECTURE.md (C4 in Mermaid) and docs/decisions/ ADRs' },
     // ── Level 4: Autonomous delivery (PC Engineering L2) ───────────
     { id: 'coverage', level: 4, label: 'Coverage floor enforced in CI', pass: ciHas('coverage', 'collect:"xplat', 'cobertura', 'lcov') || exists(root, 'quality.config.json'),
-      fix: 'Enforce per-module coverage floors (quality.config.json) — floors only ratchet up' },
+      fix: 'squad optimize gates, then ratchet quality.config.json coverage.lines up' },
     { id: 'gherkin', level: 4, label: 'Executable specs (Gherkin bound to OpenSpec)', pass: featureFiles,
-      fix: 'Add .feature scenarios (Reqnroll / playwright-bdd / Cucumber) run on every PR' },
+      fix: 'squad optimize specs (OpenSpec → features/*.feature), bind with Reqnroll / playwright-bdd / pytest-bdd' },
     { id: 'sbom', level: 4, label: 'SBOM generated (Syft CycloneDX)', pass: ciHas('syft', 'cyclonedx', 'sbom'),
-      fix: 'Generate a CycloneDX SBOM with Syft in CI' },
+      fix: 'squad optimize gates (Syft job)' },
     { id: 'agentic-workflows', level: 4, label: 'Agentic workflows (triage/implement routes)', pass: stack.ciFiles.some((f) => /squad-|agentic|copilot-setup|\.md$/.test(f)) || exists(root, '.github/workflows/squad-triage.yml'),
       fix: 'npx @plainconceptsplatform/workflows add --template quality-gates (or keep Squad workflows enabled)' },
     { id: 'token-tooling', level: 4, label: 'Token optimisation (RTK / economy / context tier)', pass: tokenTooling(root),
@@ -106,9 +106,11 @@ export function assessAidlc(root: string, stackIn?: ProjectStack): AidlcReport {
     { id: 'complexity', level: 5, label: 'Complexity gate (CC ≤ 15, CRAP ≤ 30)', pass: ciHas('complexity', 'lizard', 'crap', 'sonar'),
       fix: 'Add a complexity/CRAP check against a baseline' },
     { id: 'merge-gate', level: 5, label: 'Merge gate for bot PRs (auto-merge with guardrails)', pass: ciHas('merge-gate', 'merge gate', 'auto-merge', 'merge-train'),
-      fix: 'Adopt the Platform merge gate route (agentic-workflows: merge-gate)' },
+      fix: 'squad optimize gates (pc-merge-gate) + enable auto-merge in repo settings' },
+    { id: 'intake', level: 5, label: 'Maintenance-mode intake (PRODUCT_SCOPE + business request form)', pass: exists(root, 'PRODUCT_SCOPE.md') && exists(root, '.github/ISSUE_TEMPLATE/business-request.yml'),
+      fix: 'squad optimize intake' },
     { id: 'contract', level: 5, label: 'Platform contract & health registration', pass: exists(root, '.platform/contract.yml'),
-      fix: 'Add .platform/contract.yml and register in Project Health (platform-onboard skill)' },
+      fix: 'squad optimize platform (contract + Project Health registration command)' },
   ];
 
   let level = 0;
@@ -179,10 +181,16 @@ export function renderAidlcReport(r: AidlcReport): string {
   return lines.join('\n');
 }
 
-export function writeAidlcReport(root: string): { report: AidlcReport; path: string } {
+/**
+ * Writes `.squad/aidlc/assessment.md` (human) and `assessment.json` (read by the
+ * pc-pr-guardrails AIDLC trend gate). `extraMarkdown` is appended (e.g. token economy).
+ */
+export function writeAidlcReport(root: string, extraMarkdown = ''): { report: AidlcReport; path: string } {
   const report = assessAidlc(root);
-  const out = path.join(root, '.squad', 'aidlc', 'assessment.md');
-  fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, renderAidlcReport(report));
-  return { report, path: path.relative(root, out).replace(/\\/g, '/') };
+  const dir = path.join(root, '.squad', 'aidlc');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'assessment.md'), renderAidlcReport(report) + (extraMarkdown ? `\n${extraMarkdown}` : ''));
+  const json = { level: report.level, checks: report.checks.map(({ id, level, label, pass }) => ({ id, level, label, pass })) };
+  fs.writeFileSync(path.join(dir, 'assessment.json'), JSON.stringify(json, null, 2) + '\n');
+  return { report, path: '.squad/aidlc/assessment.md' };
 }

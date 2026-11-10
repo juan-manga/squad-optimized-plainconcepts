@@ -176,8 +176,12 @@ async function main(): Promise<void> {
     console.log(`                    --openspec/--no-openspec  --rtk/--no-rtk  --graphify`);
     console.log(`                    --skills recommended|none|id1,id2  --offline (no installs)`);
     console.log(`                    --models recommended|auto|lead=claude-opus-5.5,tester=...`);
-    console.log(`  ${BOLD}optimize${RESET}   Plain Concepts optimizer: all|instructions|repomap|skills|tools|models`);
-    console.log(`  ${BOLD}aidlc${RESET}      AIDLC maturity assessment (0–5) → .squad/aidlc/assessment.md`);
+    console.log(`                    --gates/--no-gates  --platform/--no-platform  --mcp/--no-mcp`);
+    console.log(`                    --provider github-copilot|anthropic|forge (OpenCode)  --fast`);
+    console.log(`  ${BOLD}optimize${RESET}   Plain Concepts optimizer: all|instructions|repomap|skills|tools|models|`);
+    console.log(`             gates|specs|platform|intake|mcp|usage`);
+    console.log(`  ${BOLD}aidlc${RESET}      AIDLC maturity assessment (0–5) → .squad/aidlc/assessment.{md,json}`);
+    console.log(`  ${BOLD}context-mcp${RESET} MCP server: repo_map, project_stack, aidlc_assessment, find_symbol`);
     console.log(`             Usage: init --mode remote <team-repo-path>`);
     console.log(`             Creates .squad/config.json pointing to an external team root`);
     console.log(`  ${BOLD}upgrade${RESET}    Update Squad-owned files to latest version`);
@@ -364,9 +368,17 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cmd === 'context-mcp') {
+    const { runContextMcp } = await import('./cli/core/pc/context-mcp.js');
+    await runContextMcp(getSquadStartDir());
+    return;
+  }
+
   if (cmd === 'aidlc') {
     const { writeAidlcReport, renderAidlcReport } = await import('./cli/core/pc/aidlc.js');
-    const { report, path: reportPath } = writeAidlcReport(getSquadStartDir());
+    const { buildUsageReport } = await import('./cli/core/pc/models-catalog.js');
+    const usage = await buildUsageReport(getSquadStartDir(), { online: !args.includes('--offline') });
+    const { report, path: reportPath } = writeAidlcReport(getSquadStartDir(), usage.markdown);
     if (args.includes('--json')) console.log(JSON.stringify(report, null, 2));
     else console.log(renderAidlcReport(report));
     console.log(`Saved to ${reportPath}`);

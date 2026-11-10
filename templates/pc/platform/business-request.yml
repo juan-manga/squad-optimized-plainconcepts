@@ -1,0 +1,38 @@
+name: Business request
+description: Ask the agent team for a change (UX, workflows, branding, content, business rules).
+title: "[Request]: "
+labels: ["business-request", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The triage agent checks this request against `PRODUCT_SCOPE.md` and answers with one of:
+        **pass**, **needs-info**, **needs-maintainer** or **block** (up to 3 rounds of questions).
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind of change
+      options: [UX / copy, Workflow, Branding, Content, Business rule / formula, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve, and for whom?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome (acceptance criteria)
+      description: "Given / When / Then is ideal — it becomes the spec scenario."
+      placeholder: |
+        Given a customer with an expired card
+        When they open the billing page
+        Then they see a banner asking to update the card
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Screenshots, links, examples

@@ -60,6 +60,7 @@ export const MANIFEST_SKILL_NAMES = [
   'aidlc-maturity',
   'token-economy',
   'project-instructions',
+  'business-intake',
 ] as const;
 
 // ============================================================================

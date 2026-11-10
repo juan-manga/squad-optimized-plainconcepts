@@ -345,6 +345,12 @@ export const TEMPLATE_MANIFEST: TemplateFile[] = [
     overwriteOnUpgrade: true,
     description: 'Keep AGENTS.md / copilot-instructions / CLAUDE.md accurate',
   },
+  {
+    source: 'skills/business-intake/SKILL.md',
+    destination: '../.github/skills/business-intake/SKILL.md',
+    overwriteOnUpgrade: true,
+    description: 'Maintenance-mode triage of business requests (10 checks, 4 verdicts)',
+  },
 
   // Session init reference (squad-owned, coordinator reads at session start)
   {

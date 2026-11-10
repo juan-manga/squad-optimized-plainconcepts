@@ -1,0 +1,46 @@
+# Squad Optimized — Plain Concepts: keep the fork current with bradygaster/squad.
+# Weekly (and on demand): fast-forwards `dev` to upstream `dev`, then opens or refreshes
+# a PR from `dev` into the optimized branch so upstream changes are reviewed before merging.
+name: pc-sync-upstream
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    if: github.repository != 'bradygaster/squad'
+    runs-on: ubuntu-latest
+    env:
+      OPTIMIZED_BRANCH: squad-optimized-plainconcepts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: dev
+      - name: Fast-forward dev to upstream
+        run: |
+          git remote add upstream https://github.com/bradygaster/squad.git
+          git fetch upstream dev
+          git merge --ff-only upstream/dev
+          git push origin dev
+      - name: Open / refresh PR dev → optimized branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(git rev-list --count origin/$OPTIMIZED_BRANCH..dev)" = "0" ]; then
+            echo "Optimized branch already contains upstream."; exit 0
+          fi
+          existing=$(gh pr list --base "$OPTIMIZED_BRANCH" --head dev --state open --json number --jq '.[0].number')
+          if [ -z "$existing" ]; then
+            gh pr create --base "$OPTIMIZED_BRANCH" --head dev \
+              --title "chore: sync upstream bradygaster/squad" \
+              --body "Automated weekly sync of upstream \`dev\`. Run \`npm test\` and \`npm run sync-templates\` after resolving conflicts."
+          else
+            echo "PR #$existing already open — updated by the push."
+          fi
