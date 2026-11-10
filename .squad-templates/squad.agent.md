@@ -378,13 +378,23 @@ After routing determines WHO handles work, select a **response MODE** (Direct / 
 
 ### Per-Agent Model Selection
 
-Resolve a model before every spawn with the central resolver precedence (first match wins): **user-override** (explicit per-spawn directive) → **config** (`.squad/config.json` `agentModelOverrides.{agent}`, then `defaultModel`) → **session** (the model picked for this session; every sub-agent spawn inherits it unchanged) → **charter** (`## Model` → `**Preferred:**`) → **task-auto** (task-aware tier under the active quality profile; default `quality-first`, with `balanced` or `economy` only by explicit opt-in) → **default**. `auto` at any layer means no preference; continue to the next. Never hard-code model IDs in spawn guidance; tiers map to IDs only through the catalog appendix of the reference.
+Resolve a model before every spawn with the central resolver precedence (first match wins): **user-override** (explicit per-spawn directive) → **config** (`.squad/config.json` `agentModelOverrides.{agent}`, then `roleModelOverrides.{role category}` chosen by the installer, then `defaultModel`) → **session** (the model picked for this session; every sub-agent spawn inherits it unchanged) → **charter** (`## Model` → `**Preferred:**`) → **task-auto** (task-aware tier under the active quality profile; default `quality-first`, with `balanced` or `economy` only by explicit opt-in) → **default**. `auto` at any layer means no preference; continue to the next. Never hard-code model IDs in spawn guidance; tiers map to IDs only through the catalog appendix of the reference.
 
 When the resolved model is unavailable, silently try the next entries after it in its tier fallback chain (source `fallback`), never back toward the head; once no later candidate remains, omit the `model` parameter for the platform default.
 
 Every spawn acknowledgment shows the model, its source and a short rationale: `{emoji} {Name} ({model} · {source}) — {task summary} — {rationale}`.
 
 **On-demand reference:** Read `.squad/templates/model-selection-reference.md` for the full precedence, role-to-tier mapping, fallback rules, spawn formatting, and the model catalog appendix.
+
+### Squad Optimized — Plain Concepts
+
+Active when `.squad/config.json` has a `plainConcepts` block (written by the installer / `squad optimize`).
+
+- **Casting:** when you cast a member, write its role model into `agentModelOverrides.{name}` from `roleModelOverrides` (categories: lead, frontend, backend, tester, devops, docs, data, security, ai, scribe, monitor, reviewer, default) unless one is already set, and record its icon in `agentIcons.{name}`. Every member has an icon: use `agentIcons.{name}` first, else the Role Emoji table. Add `- **Icon:** {emoji}` to the charter's Identity section.
+- **Context budget:** spawn prompts point agents to `.squad/context/repomap.md` (and `graphify-out/GRAPH_REPORT.md` when present) instead of pasting file lists; agents read only the files they need. Never inline whole files into spawn prompts — pass paths.
+- **Specs:** when `openspec/` exists, non-trivial work starts as an OpenSpec change (`/opsx:propose`, then `/opsx:apply`, `/opsx:archive`). The Lead reviews the proposal before implementation; app-code PRs must touch a spec, change or decision record.
+- **AIDLC:** `.squad/aidlc/assessment.md` holds the maturity level (0–5) and roadmap. When the user asks "what next?" or the backlog is empty, propose the next roadmap item; after guardrail work, run `squad aidlc` to refresh it. Load the `aidlc-maturity` skill for the level criteria.
+- **Instructions:** keep `AGENTS.md` the single source of truth; regenerate the managed blocks with `squad optimize instructions` after stack changes.
 
 ### Per-Agent Reasoning Effort
 

@@ -56,6 +56,10 @@ export const MANIFEST_SKILL_NAMES = [
   'coordinator-source-of-truth',
   'coordinator-response-mode',
   'coordinator-init-mode',
+  // Squad Optimized — Plain Concepts
+  'aidlc-maturity',
+  'token-economy',
+  'project-instructions',
 ] as const;
 
 // ============================================================================

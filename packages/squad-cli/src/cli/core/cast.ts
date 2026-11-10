@@ -10,6 +10,12 @@ import {
   generateCharterFromRole,
   addAgentToConfig,
   syncTeamCapabilities,
+  readRoleModelOverrides,
+  readAgentModelOverrides,
+  writeAgentModelOverrides,
+  writeAgentIcons,
+  roleModelFor,
+  roleIcon,
 } from '@bradygaster/squad-sdk';
 import {
   CastingEngine,
@@ -426,6 +432,7 @@ function generateCharter(member: CastMember & { _personality?: string; _backstor
 ## Identity
 
 - **Name:** ${member.name}
+- **Icon:** ${member.emoji || roleIcon(member.role)}
 - **Role:** ${member.role}
 - **Expertise:** ${member.scope}
 - **Style:** Direct and focused.
@@ -525,6 +532,29 @@ function readBuiltinCharter(
     throw new Error(`Built-in charter template not found: ${templatePath}`);
   }
   return charter;
+}
+
+// ── Icons & role models (Squad Optimized — Plain Concepts) ─────────
+
+function applyIconsAndRoleModels(squadDir: string, members: { member: CastMember; id: string }[]): void {
+  try {
+    const icons: Record<string, string> = {};
+    for (const { member, id } of members) icons[id] = member.emoji || roleIcon(member.role);
+    writeAgentIcons(squadDir, icons);
+
+    const roleModels = readRoleModelOverrides(squadDir);
+    if (Object.keys(roleModels).length === 0) return;
+    const overrides = readAgentModelOverrides(squadDir);
+    let changed = false;
+    for (const { member, id } of members) {
+      if (overrides[id]) continue; // explicit per-agent choice wins
+      const model = roleModelFor(roleModels, member.role);
+      if (model) { overrides[id] = model; changed = true; }
+    }
+    if (changed) writeAgentModelOverrides(squadDir, overrides);
+  } catch {
+    // Best-effort: casting must never fail because of icon/model preferences.
+  }
 }
 
 // ── Team file updaters ─────────────────────────────────────────────
@@ -712,6 +742,10 @@ export async function createTeam(teamRoot: string, proposal: CastProposal): Prom
 
       membersCreated.push(member.name);
     }
+
+    // Squad Optimized (Plain Concepts): every member gets an icon, and the
+    // installer's per-role model choices become per-agent overrides.
+    applyIconsAndRoleModels(squadDir, allMembers);
     for (const [id, record] of Object.entries(registry.agents)) {
       if (record.status !== 'retired') continue;
       const activeDir = join(agentsDir, id);

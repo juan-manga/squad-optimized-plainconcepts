@@ -31,6 +31,7 @@ import {
   insertCopilotSection,
 } from './team-md.js';
 import { modify, applyEdits, parse as parseJsonc } from 'jsonc-parser';
+import { collectOptimizeAnswers, applyOptimize, type OptimizeOptions } from './pc/optimize.js';
 
 const storage = new FSStorageProvider();
 
@@ -116,6 +117,8 @@ export function isInitNoColor(): boolean {
   return (
     (process.env['NO_COLOR'] != null && process.env['NO_COLOR'] !== '') ||
     process.env['TERM'] === 'dumb' ||
+    // Squad Optimized: --fast / SQUAD_FAST skips ceremony animations entirely.
+    (process.env['SQUAD_FAST'] != null && process.env['SQUAD_FAST'] !== '' && process.env['SQUAD_FAST'] !== '0') ||
     !process.stdout.isTTY
   );
 }
@@ -185,6 +188,11 @@ export interface RunInitOptions {
   clients?: ClientId[];
   /** If false, skip writing "chat.newSession.defaultMode": "Squad" to .vscode/settings.json (default: true) */
   includeVscodeDefault?: boolean;
+  /**
+   * Squad Optimized — Plain Concepts installer. `enabled: true` (--optimize/--yes) runs it,
+   * `false` (--no-optimize) skips it, undefined asks in interactive sessions only.
+   */
+  optimize?: OptimizeOptions & { enabled?: boolean };
 }
 
 /**
@@ -272,6 +280,37 @@ export async function runInit(dest: string, options: RunInitOptions = {}): Promi
   // Show deprecation warning if using .ai-team/
   if (squadInfo.isLegacy) {
     showDeprecationWarning();
+  }
+
+  // ── Squad Optimized — Plain Concepts: ask installer questions up front ──
+  // Answers are collected before scaffolding so the chosen hosts drive client
+  // projections; they are applied after scaffolding (models, instructions, tools).
+  let optimizeAnswers: OptimizeOptions | undefined;
+  {
+    const opt = options.optimize ?? {};
+    const interactive = isInteractiveSession();
+    let enabled = opt.enabled;
+    if (enabled !== false && (interactive || enabled === true)) {
+      const { createInterface } = await import('node:readline/promises');
+      const rl = interactive && !opt.yes ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+      try {
+        if (enabled === undefined && rl) {
+          const a = (await rl.question(`  Apply ${BOLD}Plain Concepts optimizations${RESET} (OpenSpec, skills, models per role, token savers, AIDLC)? [Y/n]: `)).trim().toLowerCase();
+          enabled = a === '' || a.startsWith('y') || a.startsWith('s');
+        }
+        if (enabled) {
+          optimizeAnswers = await collectOptimizeAnswers(dest, { ...opt, hosts: opt.hosts ?? options.clients }, {
+            interactive: !!rl,
+            ask: rl ? (q) => rl.question(q) : undefined,
+          });
+          if (!options.clients?.length && optimizeAnswers.hosts?.length) {
+            options = { ...options, clients: optimizeAnswers.hosts as ClientId[] };
+          }
+        }
+      } finally {
+        rl?.close();
+      }
+    }
   }
 
   // Build SDK options
@@ -578,6 +617,16 @@ export async function runInit(dest: string, options: RunInitOptions = {}): Promi
     } else {
       console.log(`${DIM}  Non-interactive mode — skipping @copilot setup. Add later with: squad copilot enable${RESET}`);
     }
+  }
+
+  if (optimizeAnswers) {
+    try {
+      await applyOptimize(dest, optimizeAnswers);
+    } catch (err) {
+      console.warn(`${YELLOW}⚠ Plain Concepts optimizer: ${err instanceof Error ? err.message : err}${RESET}`);
+    }
+  } else if (options.optimize?.enabled !== false) {
+    console.log(`${DIM}  Tip: run ${CYAN}squad optimize${RESET}${DIM} for Plain Concepts optimizations (OpenSpec, skills, models, RTK, AIDLC).${RESET}`);
   }
 
   // ── Celebration ceremony ──────────────────────────────────────────

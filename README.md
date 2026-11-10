@@ -1,3 +1,35 @@
+# Squad Optimized — Plain Concepts
+
+> Fork of [bradygaster/squad](https://github.com/bradygaster/squad) tuned to take a project from **AIDLC 0 to 4–5** following the [Plain Concepts Platform](https://platform.plainconcepts.dev) method. Everything upstream still works; the additions are below.
+
+## What this fork adds
+
+| Feature | How |
+|---|---|
+| **Installer wizard** | `squad init` asks: AI hosts, OpenSpec, model per role, skills, token savers. Every question has a flag for CI (`--yes`, `--no-optimize`, `--openspec`, `--skills`, `--models`, `--rtk`, `--graphify`, `--offline`). |
+| **OpenSpec** | Optional `openspec init --tools <your hosts>`; the coordinator routes non-trivial work through proposal → design → tasks → spec. |
+| **Skills from skills.sh + Plain Concepts** | Stack-aware recommendations (React/Next, .NET, Azure, Python…) plus `PlainConceptsPlatform/Foundations` and `agentic-workflows` skills, installed with `npx skills add`. `squad optimize skills --list`. |
+| **Project instructions** | Generates `AGENTS.md` (hub), `.github/copilot-instructions.md`, path-scoped `.github/instructions/*.instructions.md` (`applyTo`) and `CLAUDE.md` (`@AGENTS.md`) from the detected stack, in idempotent managed blocks. |
+| **Copilot, Claude Code, OpenCode** | Host choice drives Squad's client projections (`.github/agents`, `.claude/agents`, `.opencode/agent`), OpenSpec tools, RTK hooks, graphify and skills targets. |
+| **Model per team member** | Choose recommended tiers, per-role models or auto. Saved as `roleModelOverrides` and turned into `agentModelOverrides` when the team is cast; the SDK resolver honours role overrides too. |
+| **Icon per member** | Every cast member gets an emoji (`agentIcons` in config + `**Icon:**` in the charter), used in spawn messages. |
+| **Token optimisations** | Built-in Aider-style **repo map** (`.squad/context/repomap.md`, ranked + token-budgeted), **RTK** shell-output compaction, optional **graphify** knowledge graph, `token-economy` skill, small-spawn rules. |
+| **Speed** | Local generators run in milliseconds; network installs run concurrently; one cached stack scan; `--fast` / `SQUAD_FAST=1` skips animations. |
+| **AIDLC assessment** | `squad aidlc` scores the repo 0–5 against Plain Concepts engineering levels (L1–L3, the twelve practices, agentic workflows) and writes a roadmap to `.squad/aidlc/assessment.md`. |
+
+### Quick start
+
+```bash
+npm ci && npm run dev:link                                     # from a clone of this fork: builds and links `squad`
+squad init                                                     # interactive wizard
+squad init --yes --client copilot,claude,opencode              # accept recommended, non-interactive
+squad optimize                                                 # re-run the wizard on an existing squad
+squad optimize repomap | instructions | skills --list | tools --rtk | models
+squad aidlc                                                    # maturity level + roadmap
+```
+
+---
+
 # Squad
 
 [English](README.md) | [中文](README.zh.md)

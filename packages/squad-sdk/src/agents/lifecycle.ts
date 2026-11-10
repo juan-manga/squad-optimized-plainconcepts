@@ -291,7 +291,7 @@ export class AgentLifecycleManager {
       const persistent = await this.readPersistentModelConfig(squadDir);
       const modelOptions: ModelResolutionOptions = {
         userOverride: modelOverride,
-        configModel: persistentConfigModel(persistent, agentName),
+        configModel: persistentConfigModel(persistent, agentName, /\*\*Role:\*\*\s*([^\n]+)/.exec(charterContent)?.[1]?.trim()),
         sessionModel,
         economyMode: persistent?.economyMode === true,
         profile: isModelSelectionProfile(persistent?.modelProfile) ? persistent.modelProfile : undefined,
@@ -509,7 +509,7 @@ export class AgentLifecycleManager {
   private async readPersistentModelConfig(
     squadDir: string,
   ): Promise<
-    { defaultModel?: unknown; agentModelOverrides?: unknown; economyMode?: unknown; modelProfile?: unknown } | undefined
+    { defaultModel?: unknown; agentModelOverrides?: unknown; roleModelOverrides?: unknown; economyMode?: unknown; modelProfile?: unknown } | undefined
   > {
     const raw = await this.storage.read(path.join(squadDir, 'config.json'));
     if (raw === undefined) return undefined;

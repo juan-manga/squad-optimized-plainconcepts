@@ -133,6 +133,12 @@ async function main(): Promise<void> {
   if (hasEconomy) {
     process.env['SQUAD_ECONOMY_MODE'] = '1';
   }
+  // --fast skips ceremony animations (Squad Optimized — Plain Concepts)
+  const fastIdx = args.indexOf('--fast');
+  if (fastIdx !== -1) {
+    process.env['SQUAD_FAST'] = '1';
+    args.splice(fastIdx, 1);
+  }
   const rawCmd = args[0];
   const cmd = rawCmd?.trim() || '';
 
@@ -165,6 +171,13 @@ async function main(): Promise<void> {
     console.log(`                    --preset <name> (apply a preset after init)`);
     console.log(`                    --state-backend <type> (local|orphan|two-layer)`);
     console.log(`                    --client <list> (client hosts to project, or "all")`);
+    console.log(`             Plain Concepts optimizer (asked interactively; flags for CI):`);
+    console.log(`                    --optimize | --no-optimize | --yes (accept recommended)`);
+    console.log(`                    --openspec/--no-openspec  --rtk/--no-rtk  --graphify`);
+    console.log(`                    --skills recommended|none|id1,id2  --offline (no installs)`);
+    console.log(`                    --models recommended|auto|lead=claude-opus-5.5,tester=...`);
+    console.log(`  ${BOLD}optimize${RESET}   Plain Concepts optimizer: all|instructions|repomap|skills|tools|models`);
+    console.log(`  ${BOLD}aidlc${RESET}      AIDLC maturity assessment (0–5) → .squad/aidlc/assessment.md`);
     console.log(`             Usage: init --mode remote <team-repo-path>`);
     console.log(`             Creates .squad/config.json pointing to an external team root`);
     console.log(`  ${BOLD}upgrade${RESET}    Update Squad-owned files to latest version`);
@@ -345,6 +358,21 @@ async function main(): Promise<void> {
   }
 
   // Route subcommands
+  if (cmd === 'optimize') {
+    const { runOptimizeCommand } = await import('./cli/core/pc/optimize.js');
+    await runOptimizeCommand(getSquadStartDir(), args.slice(1));
+    return;
+  }
+
+  if (cmd === 'aidlc') {
+    const { writeAidlcReport, renderAidlcReport } = await import('./cli/core/pc/aidlc.js');
+    const { report, path: reportPath } = writeAidlcReport(getSquadStartDir());
+    if (args.includes('--json')) console.log(JSON.stringify(report, null, 2));
+    else console.log(renderAidlcReport(report));
+    console.log(`Saved to ${reportPath}`);
+    return;
+  }
+
   if (cmd === 'init') {
     const modeIdx = args.indexOf('--mode');
     const mode = (modeIdx !== -1 && args[modeIdx + 1]) ? args[modeIdx + 1] : undefined;
@@ -381,7 +409,9 @@ async function main(): Promise<void> {
     // Parse --state-backend flag for init
     const sbIdx = args.indexOf('--state-backend');
     const initStateBackend = (sbIdx !== -1 && args[sbIdx + 1]) ? args[sbIdx + 1] : undefined;
-    runInit(dest, { includeWorkflows: !noWorkflows, sdk, roles, stateBackend: initStateBackend, mcpFrontmatter, clients: initClients, includeVscodeDefault: !noVscodeDefault }).then(async () => {
+    const { readOptimizeFlags } = await import('./cli/core/pc/optimize.js');
+    const optimize = readOptimizeFlags(args);
+    runInit(dest, { includeWorkflows: !noWorkflows, sdk, roles, stateBackend: initStateBackend, mcpFrontmatter, clients: initClients, includeVscodeDefault: !noVscodeDefault, optimize }).then(async () => {
       if (presetName) {
         const { seedBuiltinPresets, applyPreset } = await import('@bradygaster/squad-sdk/presets');
         const { resolvePresetsDir, ensureSquadHome } = await import('@bradygaster/squad-sdk/resolution');

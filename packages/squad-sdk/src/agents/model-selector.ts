@@ -18,6 +18,7 @@ import {
   type CostPolicyOutcome,
 } from '../config/models.js';
 import type { EventBus } from '../runtime/event-bus.js';
+import { roleModelFor } from '../config/role-models.js';
 
 export {
   DEFAULT_MODEL_SELECTION_PROFILE,
@@ -276,22 +277,31 @@ export function isModelPreference(value: string | null | undefined): value is st
 export interface PersistentModelConfig {
   defaultModel?: unknown;
   agentModelOverrides?: unknown;
+  /** Role category → model id, chosen by the installer before agents are cast. */
+  roleModelOverrides?: unknown;
 }
 
 /**
  * Pick the persistent `config` layer model for an agent: its
- * `agentModelOverrides` entry, otherwise `defaultModel`. `auto` at either
+ * `agentModelOverrides` entry, then its role's `roleModelOverrides` entry
+ * (when `agentRole` is given), otherwise `defaultModel`. `auto` at either
  * field means no preference there.
  */
 export function persistentConfigModel(
   config: PersistentModelConfig | null | undefined,
   agentName?: string,
+  agentRole?: string,
 ): string | undefined {
   if (!config || typeof config !== 'object') return undefined;
   const overrides = config.agentModelOverrides;
   if (agentName && overrides && typeof overrides === 'object') {
     const agentModel = (overrides as Record<string, unknown>)[agentName];
     if (typeof agentModel === 'string' && isModelPreference(agentModel)) return agentModel.trim();
+  }
+  const roleOverrides = config.roleModelOverrides;
+  if (agentRole && roleOverrides && typeof roleOverrides === 'object') {
+    const roleModel = roleModelFor(roleOverrides as Record<string, string>, agentRole);
+    if (roleModel) return roleModel;
   }
   const defaultModel = config.defaultModel;
   if (typeof defaultModel === 'string' && isModelPreference(defaultModel)) return defaultModel.trim();

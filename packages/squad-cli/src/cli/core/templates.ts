@@ -326,6 +326,25 @@ export const TEMPLATE_MANIFEST: TemplateFile[] = [
     overwriteOnUpgrade: true,
     description: 'Init Mode two-phase protocol — propose team (Phase 1) then create .squad/ scaffolding (Phase 2)',
   },
+  // Squad Optimized — Plain Concepts
+  {
+    source: 'skills/aidlc-maturity/SKILL.md',
+    destination: '../.github/skills/aidlc-maturity/SKILL.md',
+    overwriteOnUpgrade: true,
+    description: 'AIDLC 0–5 maturity model (Plain Concepts Platform) — assessment and roadmap',
+  },
+  {
+    source: 'skills/token-economy/SKILL.md',
+    destination: '../.github/skills/token-economy/SKILL.md',
+    overwriteOnUpgrade: true,
+    description: 'Token & latency discipline — repo map first, RTK, graphify, small spawns',
+  },
+  {
+    source: 'skills/project-instructions/SKILL.md',
+    destination: '../.github/skills/project-instructions/SKILL.md',
+    overwriteOnUpgrade: true,
+    description: 'Keep AGENTS.md / copilot-instructions / CLAUDE.md accurate',
+  },
 
   // Session init reference (squad-owned, coordinator reads at session start)
   {
