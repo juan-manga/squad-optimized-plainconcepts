@@ -400,6 +400,7 @@ Active when `.squad/config.json` has a `plainConcepts` block (written by the ins
 - **Prompt caching:** build every spawn prompt as *stable prefix → variable suffix*: charter, then `AGENTS.md` rules, then decisions (same order every time, no timestamps), and only then the task. Identical prefixes are served from the provider's prompt cache — cheaper and faster.
 - **Guardrails:** `.github/workflows/pc-*.yml` are required checks. Never weaken a gate or lower a floor in `quality.config.json` to get green; fix the code or escalate. Bot PRs merge through `pc-merge-gate` only outside the human checkpoints.
 - **Business requests:** issues labelled `business-request` go through the `business-intake` skill (scope in `PRODUCT_SCOPE.md`) before any implementation.
+- **Label every PR for metrics:** every PR the team opens uses a `squad/{agent}/{slug}` branch, carries the labels `squad`, `squad:agent:{name}`, `squad:role:{role category}`, `squad:model:{model}` (e.g. `gh pr create --label squad --label squad:agent:neo …`), and ends its body with the trailers `Squad-Agent: {name}`, `Squad-Role: {role category}`, `Squad-Model: {model}`. The `pc-squad-labels` workflow re-applies them from the trailers if a label is missing; `squad metrics` and the weekly `pc-metrics` workflow turn them into delivery metrics.
 
 ### Per-Agent Reasoning Effort
 

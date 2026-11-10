@@ -33,7 +33,11 @@ jobs:
         if: steps.risk.outputs.disposition == 'auto-merge'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr merge "${{ github.event.pull_request.number }}" --auto --squash
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh label create squad:auto-merged --color 0e8a16 --description "Merged by the merge gate with no human review" 2>/dev/null || true
+          gh pr edit "$PR_NUMBER" --add-label squad:auto-merged
+          gh pr merge "$PR_NUMBER" --auto --squash
       - name: Request human review
         if: steps.risk.outputs.disposition == 'human-review'
         env:

@@ -182,6 +182,7 @@ async function main(): Promise<void> {
     console.log(`             gates|specs|platform|intake|mcp|usage`);
     console.log(`  ${BOLD}aidlc${RESET}      AIDLC maturity assessment (0–5) → .squad/aidlc/assessment.{md,json}`);
     console.log(`  ${BOLD}context-mcp${RESET} MCP server: repo_map, project_stack, aidlc_assessment, find_symbol`);
+    console.log(`  ${BOLD}metrics${RESET}    Delivery metrics of PRs labelled squad: [report] --since 30d | labels | setup`);
     console.log(`             Usage: init --mode remote <team-repo-path>`);
     console.log(`             Creates .squad/config.json pointing to an external team root`);
     console.log(`  ${BOLD}upgrade${RESET}    Update Squad-owned files to latest version`);
@@ -365,6 +366,12 @@ async function main(): Promise<void> {
   if (cmd === 'optimize') {
     const { runOptimizeCommand } = await import('./cli/core/pc/optimize.js');
     await runOptimizeCommand(getSquadStartDir(), args.slice(1));
+    return;
+  }
+
+  if (cmd === 'metrics') {
+    const { runMetricsCommand } = await import('./cli/core/pc/metrics.js');
+    await runMetricsCommand(getSquadStartDir(), args.slice(1));
     return;
   }
 

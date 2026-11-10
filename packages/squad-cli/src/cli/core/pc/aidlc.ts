@@ -19,7 +19,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { detectStack, type ProjectStack } from './stack.js';
+import { detectStack, clearStackCache, type ProjectStack } from './stack.js';
 
 export interface AidlcCheck {
   id: string;
@@ -52,6 +52,8 @@ function dirHasFiles(root: string, rel: string): boolean {
 }
 
 export function assessAidlc(root: string, stackIn?: ProjectStack): AidlcReport {
+  // Always rescan: earlier optimizer steps may have just written CI files.
+  if (!stackIn) clearStackCache();
   const stack = stackIn ?? detectStack(root);
   const ci = readAll(root, stack.ciFiles).toLowerCase();
   const ciHas = (...words: string[]) => words.some((w) => ci.includes(w));
@@ -96,15 +98,17 @@ export function assessAidlc(root: string, stackIn?: ProjectStack): AidlcReport {
       fix: 'squad optimize gates (Syft job)' },
     { id: 'agentic-workflows', level: 4, label: 'Agentic workflows (triage/implement routes)', pass: stack.ciFiles.some((f) => /squad-|agentic|copilot-setup|\.md$/.test(f)) || exists(root, '.github/workflows/squad-triage.yml'),
       fix: 'npx @plainconceptsplatform/workflows add --template quality-gates (or keep Squad workflows enabled)' },
+    { id: 'metrics', level: 4, label: 'Delivery metrics (Squad PRs labelled, weekly metrics)', pass: exists(root, '.github/workflows/pc-squad-labels.yml') && exists(root, '.github/workflows/pc-metrics.yml'),
+      fix: 'squad metrics setup && squad metrics labels' },
     { id: 'token-tooling', level: 4, label: 'Token optimisation (RTK / economy / context tier)', pass: tokenTooling(root),
       fix: 'squad optimize tools --rtk' },
     // ── Level 5: Self-maintaining (PC Engineering L3 + Maintenance mode) ─
     { id: 'mutation', level: 5, label: 'Mutation testing (Stryker)', pass: ciHas('stryker', 'mutmut', 'pitest') || exists(root, 'stryker.config.json', 'stryker-config.json', 'stryker.conf.js'),
-      fix: 'Add weekly Stryker mutation testing with a threshold' },
+      fix: 'squad optimize gates (pc-weekly-quality: Stryker), then ratchet the break threshold up' },
     { id: 'dast', level: 5, label: 'DAST (OWASP ZAP baseline)', pass: ciHas('zap', 'zaproxy', 'dast'),
-      fix: 'Add an OWASP ZAP passive baseline against preview deployments' },
+      fix: 'squad optimize gates (pc-weekly-quality: ZAP) and set the DAST_TARGET_URL repository variable' },
     { id: 'complexity', level: 5, label: 'Complexity gate (CC ≤ 15, CRAP ≤ 30)', pass: ciHas('complexity', 'lizard', 'crap', 'sonar'),
-      fix: 'Add a complexity/CRAP check against a baseline' },
+      fix: 'squad optimize gates (pc-weekly-quality: lizard, CC ≤ 15)' },
     { id: 'merge-gate', level: 5, label: 'Merge gate for bot PRs (auto-merge with guardrails)', pass: ciHas('merge-gate', 'merge gate', 'auto-merge', 'merge-train'),
       fix: 'squad optimize gates (pc-merge-gate) + enable auto-merge in repo settings' },
     { id: 'intake', level: 5, label: 'Maintenance-mode intake (PRODUCT_SCOPE + business request form)', pass: exists(root, 'PRODUCT_SCOPE.md') && exists(root, '.github/ISSUE_TEMPLATE/business-request.yml'),

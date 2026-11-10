@@ -2,7 +2,7 @@
 
 > Fork of [bradygaster/squad](https://github.com/bradygaster/squad) built to take any project from **AIDLC 0 to 4–5** following the [Plain Concepts Platform](https://platform.plainconcepts.dev) method: an agent team plus the instructions, specs, skills, token savers and CI guardrails that let agents ship safely on their own. Everything upstream still works; this section documents what the fork adds. The original Squad docs follow below.
 
-**Contents:** [Quick start](#quick-start) · [The installer](#the-installer-squad-init) · [AIDLC levels](#aidlc-maturity-levels-squad-aidlc) · [Commands](#squad-optimize-commands) · [Features](#features-in-detail) · [Generated files](#files-the-optimizer-generates) · [Config](#squadconfigjson-keys) · [Fork maintenance](#maintaining-the-fork) · [Limitations](#known-limitations)
+**Contents:** [Quick start](#quick-start) · [The installer](#the-installer-squad-init) · [AIDLC levels](#aidlc-maturity-levels-squad-aidlc) · [Commands](#squad-optimize-commands) · [Features](#features-in-detail) · [Metrics](#delivery-metrics-squad-metrics) · [Generated files](#files-the-optimizer-generates) · [Config](#squadconfigjson-keys) · [Fork maintenance](#maintaining-the-fork) · [Limitations](#known-limitations)
 
 ## Quick start
 
@@ -27,7 +27,7 @@ squad init --yes --client copilot,claude,opencode     # accept every recommended
 squad init --yes --offline --no-gates                 # local generators only, no CI files
 ```
 
-Typical path to level 4–5: `squad init` → let the team cast itself → `squad optimize gates` → make the `pc-*` jobs required checks → write OpenSpec specs → `squad optimize specs` → enable auto-merge for the merge gate → `squad optimize platform` and register in Project Health.
+Typical path to level 4–5: `squad init` → let the team cast itself → `squad optimize gates` → make the `pc-*` jobs required checks → write OpenSpec specs → `squad optimize specs` → enable auto-merge for the merge gate → `squad metrics labels` and watch `squad metrics` → `squad optimize platform` and register in Project Health.
 
 ## The installer (`squad init`)
 
@@ -64,8 +64,8 @@ Plain Concepts Platform defines engineering levels L0–L3, twelve practices, th
 | 1 | Assisted | AGENTS.md hub · host instructions · build/test commands discoverable | `squad optimize instructions` |
 | 2 | Structured | Squad team cast · skills · OpenSpec · tests · CI · repo map/graph | `squad init`, `optimize skills`, `optimize tools --openspec`, `optimize repomap` |
 | 3 | Guarded (PC L1) | Secrets (TruffleHog) · Vulnerabilities (Trivy) · SAST (Semgrep) · spec-in-PR gate · ARCHITECTURE.md + ADRs | `squad optimize gates` |
-| 4 | Autonomous delivery (PC L2) | Coverage floor · Gherkin specs bound to OpenSpec · SBOM (Syft) · agentic workflows · token tooling | `optimize gates`, `optimize specs`, `optimize tools --rtk` |
-| 5 | Self-maintaining (PC L3 + Maintenance mode) | Mutation (Stryker) · DAST (ZAP) · complexity gate · merge gate · intake (PRODUCT_SCOPE) · `.platform/contract.yml` | `optimize gates` (merge gate), `optimize intake`, `optimize platform` |
+| 4 | Autonomous delivery (PC L2) | Coverage floor · Gherkin specs bound to OpenSpec · SBOM (Syft) · agentic workflows · delivery metrics · token tooling | `optimize gates`, `optimize specs`, `metrics setup`, `optimize tools --rtk` |
+| 5 | Self-maintaining (PC L3 + Maintenance mode) | Mutation (Stryker) · DAST (ZAP) · complexity gate · merge gate · intake (PRODUCT_SCOPE) · `.platform/contract.yml` | `optimize gates` (weekly quality + merge gate), `optimize intake`, `optimize platform` |
 
 `squad aidlc` writes `.squad/aidlc/assessment.md` (levels, ✅/❌ per check, the exact fix for each ❌, a numbered roadmap, and a **Token economy** section) and `.squad/aidlc/assessment.json` (read by the AIDLC trend gate). `--json` prints the JSON; `--offline` skips the models.dev price lookup. The `aidlc-maturity` skill teaches the team the criteria; the coordinator proposes the next roadmap item when the backlog is empty.
 
@@ -86,6 +86,10 @@ Level 4 test, from the Platform docs: *can a change go from issue to production 
 | `squad optimize platform [--force]` | Writes `.platform/contract.yml` and prints the Project Health registration command. |
 | `squad optimize intake [--force]` | Writes `PRODUCT_SCOPE.md` and the business request issue form. |
 | `squad optimize mcp` | Registers the `squad-context` MCP server in `.mcp.json`. |
+| `squad optimize metrics` | Same as `squad metrics setup`. |
+| `squad metrics [--since 30d\|YYYY-MM-DD] [--until …] [--repo o/r] [--json]` | Delivery metrics of PRs labelled `squad` → `.squad/metrics/report.md`, `metrics.json`, `prs.csv`. |
+| `squad metrics labels [--repo o/r]` | Creates the label set in the GitHub repo (`squad`, `squad:auto-merged`, `human-review`, `squad:role:*`). |
+| `squad metrics setup [--force]` | Writes the `pc-squad-labels` and `pc-metrics` workflows and their scripts. |
 | `squad optimize usage [--offline]` | Prints the token economy report (models per role, relative cost, models.dev prices, repo map size, RTK savings). |
 | `squad aidlc [--json] [--offline]` | AIDLC assessment + roadmap. |
 | `squad context-mcp` | Runs the MCP server over stdio (used by `.mcp.json`). |
@@ -151,14 +155,48 @@ One cached stack scan shared by every step; local generators in milliseconds; ne
 | `.github/workflows/pc-quality-gates.yml` | **Secrets** (TruffleHog, verified only) · **Vulnerabilities** (Trivy fs, CRITICAL/HIGH, fixed only) · **SAST** (Semgrep `--error`) · **SBOM** (Syft CycloneDX, uploaded as `engineering-excellence-sbom`) · **Tests & coverage floor** with stack-specific setup (Node+Vitest/Jest lcov, .NET XPlat Coverage, Python pytest-cov, Go). Tools run from their official Docker images, so no action versions to keep pinned. |
 | `.github/workflows/pc-pr-guardrails.yml` | **Spec gate**: app-code changes must touch `openspec/`, `docs/decisions/`, `docs/adr/`, `.squad/decisions` or `features/`, and update docs or include `Docs-impact: none - <reason>` in the PR body. **Diff check**: fails when comment lines exceed 10% of added code, test lines exceed code lines, more than 40 test cases per 1k lines, or tests are skipped/focused, assertion-less, snapshot-only or mock-only. **AIDLC trend**: fails if the committed AIDLC level or any practice regresses versus the base branch. |
 | `.github/workflows/pc-merge-gate.yml` | For bot/agent PRs (`[bot]`, `copilot`, `squad`, or label `squad:auto`): enables auto-merge when outside the human checkpoints; otherwise labels `human-review` with the reason. Checkpoints: `.github/` changes, secrets/key files, >10,000 changed lines, migrations, labels `low-confidence`/`security`/`breaking-change`. |
+| `.github/workflows/pc-weekly-quality.yml` | Weekly (Sunday) and on demand: **Mutation** (Stryker for JS/TS with the detected Vitest/Jest runner and a generated `stryker.config.json`; `dotnet stryker --break-at` for .NET; mutmut for Python) · **Complexity** (lizard, CC ≤ 15 per function on your app paths) · **DAST** (OWASP ZAP passive baseline against the `DAST_TARGET_URL` repository variable; skipped when unset). |
+| `.github/workflows/pc-squad-labels.yml`, `pc-metrics.yml` | Label every Squad PR and compute delivery metrics weekly (see [Delivery metrics](#delivery-metrics-squad-metrics)). |
 | `.github/scripts/pc-*.mjs` | Zero-dependency Node scripts used by the jobs (refreshed on every run). |
-| `quality.config.json` | `appPaths`, `specPaths`, `docsPaths`, `coverage.lines` floor, diff thresholds, merge-gate limits. **Floors only ratchet up**; the coverage job prints a notice when you can raise the floor. |
+| `quality.config.json` | `appPaths`, `specPaths`, `docsPaths`, `coverage.lines` floor, `mutation.break` (.NET), diff thresholds, merge-gate limits. **Floors only ratchet up**; the coverage job prints a notice when you can raise the floor. |
 
 After generating: make every `pc-quality-gates` and `pc-pr-guardrails` job a **required status check** (Settings → Rules → Rulesets), enable **Allow auto-merge**, and set `coverage.lines` from your first CI baseline.
 
 ### 11. Plain Concepts Platform & Maintenance mode
 - `squad optimize platform`: `.platform/contract.yml` (`project`, `type` detected as back-front / static-site / ml / other, `owned`, `reuse`, `sync`) and the command to register the repo in Project Health: `gh workflow run discover.yml --repo PlainConceptsPlatform/Project-Health-Platform -f repo=<owner>/<repo>`.
 - `squad optimize intake`: `PRODUCT_SCOPE.md` (what the business may request vs. what needs a maintainer, 8+ point stories split into 3–5) and `.github/ISSUE_TEMPLATE/business-request.yml` (labels `business-request`, `needs-triage`). The `business-intake` skill triages those issues with 10 checks, up to 3 question rounds and the verdicts **pass / needs-info / needs-maintainer / block**; on *pass* it creates the OpenSpec change and labels the issue `squad`.
+
+## Delivery metrics (`squad metrics`)
+
+Every PR produced by the agent team is **labelled**, so delivery can be measured from GitHub alone.
+
+**How PRs get labelled**
+
+1. The coordinator opens every PR from a `squad/{agent}/{slug}` branch, with the labels `squad`, `squad:agent:{name}`, `squad:role:{role}`, `squad:model:{model}`, and the body trailers `Squad-Agent:`, `Squad-Role:`, `Squad-Model:`.
+2. The `pc-squad-labels` workflow (`pull_request_target`, base-branch checkout only, so PR code never runs) re-applies the labels on every PR event. A PR counts as a Squad PR when its branch starts with `squad/`, its author is a bot/agent (`quality.config.json` → `mergeGate.botAuthors`) or its body has a `Squad-Agent:` trailer. Missing labels are created on the fly.
+3. The merge gate adds `squad:auto-merged` when it enables auto-merge, and `human-review` when a human checkpoint is hit.
+
+Run `squad metrics labels` once to create the base label set with colours and descriptions.
+
+**What is measured** (over PRs labelled `squad` created in the window, default 30 days)
+
+| Metric | Definition |
+|---|---|
+| Throughput | PRs opened, merged, closed unmerged, still open |
+| Merge rate | merged / (merged + closed unmerged) |
+| Lead time p50 / p90 | PR opened → merged, in hours |
+| Time to first human review p50 / p90 | PR opened → first review by a non-bot, non-author |
+| **Merged by the gate** | merged PRs with `squad:auto-merged` or no human review — the Platform's key autonomy metric |
+| Human checkpoints | PRs labelled `human-review` by the merge gate |
+| Median PR size | additions + deletions of merged PRs |
+| AI share | Squad PRs merged / all PRs merged in the window, with the Platform AI-usage bucket (1–5 at 10/25/50/75%) |
+| Breakdowns | the same metrics by agent, role, model and week |
+
+**Where it runs**
+
+- Locally: `squad metrics --since 90d` (token from `GITHUB_TOKEN`, `GH_TOKEN` or `gh auth token`; repo from `--repo`, `GITHUB_REPOSITORY` or the `origin` remote) → `.squad/metrics/report.md`, `metrics.json` (no per-PR data) and `prs.csv` (one row per PR for spreadsheets / Power BI).
+- In CI: `pc-metrics.yml` runs weekly (Monday) and on demand with a `since` input, writes the report to the job summary and uploads the `squad-metrics` artifact.
+- Both use the same engine, `.github/scripts/pc-metrics.mjs` (GitHub GraphQL search, up to 1,000 PRs per window), so the numbers match.
 
 ## Files the optimizer generates
 
@@ -167,6 +205,8 @@ After generating: make every `pc-quality-gates` and `pc-pr-guardrails` job a **r
 | `.squad/config.json` → `plainConcepts`, `roleModelOverrides`, `roleModelOverridesOpencode`, `agentIcons` | squad | wizard / `optimize models` / casting |
 | `.squad/context/repomap.md`, `repomap.cache.json` | squad | `optimize repomap`, MCP `repo_map` |
 | `.squad/aidlc/assessment.md`, `assessment.json` | squad (commit them) | `squad aidlc` |
+| `.squad/metrics/report.md`, `metrics.json`, `prs.csv` | squad | `squad metrics` |
+| `stryker.config.json` (JS/TS) | you (generated once) | `optimize gates --force` |
 | `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md` (managed block) | shared | `optimize instructions` |
 | `.github/instructions/*.instructions.md` | squad until you remove the marker | `optimize instructions` |
 | `.github/workflows/pc-*.yml`, `quality.config.json` | you (generated once) | `optimize gates --force` |
@@ -198,8 +238,8 @@ Role categories: `lead`, `frontend`, `backend`, `tester`, `devops`, `docs`, `dat
 
 - **Upstream sync:** `.github/workflows/pc-sync-upstream.yml` runs weekly (and on demand): fast-forwards `dev` to `bradygaster/squad@dev` and opens a PR from `dev` into `squad-optimized-plainconcepts`. Enable Actions on the fork for it to run.
 - **Templates:** edit `.squad-templates/` (including `.squad-templates/pc/` for gate workflows/scripts and platform files), then run `npm run sync-templates`.
-- **Code:** the optimizer lives in `packages/squad-cli/src/cli/core/pc/` (`optimize.ts` wizard, `stack.ts`, `repomap.ts`, `instructions.ts`, `skills-catalog.ts`, `tools.ts`, `gates.ts`, `specs.ts`, `platform.ts`, `models-catalog.ts`, `context-mcp.ts`, `aidlc.ts`); role models and icons in `packages/squad-sdk/src/config/role-models.ts`.
-- **Tests:** `npx vitest run test/pc-optimizer.test.ts test/pc-guardrails.test.ts`.
+- **Code:** the optimizer lives in `packages/squad-cli/src/cli/core/pc/` (`optimize.ts` wizard, `stack.ts`, `repomap.ts`, `instructions.ts`, `skills-catalog.ts`, `tools.ts`, `gates.ts`, `specs.ts`, `platform.ts`, `models-catalog.ts`, `context-mcp.ts`, `metrics.ts`, `aidlc.ts`); role models and icons in `packages/squad-sdk/src/config/role-models.ts`; the metrics engine and gate scripts in `.squad-templates/pc/scripts/`.
+- **Tests:** `npx vitest run test/pc-optimizer.test.ts test/pc-guardrails.test.ts test/pc-metrics.test.ts`.
 - **Distribution:** today install from a clone (`npm run dev:link`) or build tarballs with `npm run build && npm pack -w packages/squad-sdk -w packages/squad-cli` and `npm i -g ./bradygaster-squad-cli-*.tgz`. Publishing to npm under a Plain Concepts scope needs the packages renamed and an npm org token; it is not done yet.
 
 ## Known limitations
@@ -209,7 +249,10 @@ Role categories: `lead`, `frontend`, `backend`, `tester`, `devops`, `docs`, `dat
 - Repo map symbols come from regular expressions, not tree-sitter; unusual syntax can be missed.
 - Only `find-skills` and OpenSpec installs were exercised end to end; other skill identifiers come from skills.sh listings and may move.
 - The merge gate and gate workflows were validated with unit tests and local git diffs, not yet on a live GitHub repository.
-- Mutation (Stryker), DAST (ZAP) and complexity gates are assessed but not generated yet.
+- Mutation, complexity and DAST run weekly and report; they are not required PR checks. DAST needs a deployed URL in `DAST_TARGET_URL`.
+- `squad metrics` only sees PRs that carry the `squad` label: PRs opened before the labelling workflow existed must be labelled by hand (or opened from `squad/*` branches). GitHub search caps a window at 1,000 PRs.
+- The AI share counts PRs, not commits as the Platform's AI-usage metric does; treat the bucket as an approximation.
+- The metrics engine was tested with mocked GitHub responses, not yet against a live repository.
 
 ---
 

@@ -74,6 +74,35 @@ export function ciCommands(stack: ProjectStack): { setup: string; install: strin
   return { setup: step('- run: echo "No toolchain detected — edit pc-quality-gates.yml"'), install: 'echo "no install step"', coverage: stack.commands.test ?? 'echo "no tests"' };
 }
 
+const strykerRunner = (stack: ProjectStack): 'vitest' | 'jest' | undefined =>
+  stack.frameworks.includes('Vitest') ? 'vitest' : stack.frameworks.includes('Jest') ? 'jest' : undefined;
+
+/** stryker.config.json for JS/TS stacks (thresholds.break ratchets up like coverage). */
+export function strykerConfig(stack: ProjectStack): Record<string, unknown> {
+  const runner = strykerRunner(stack);
+  return {
+    $schema: './node_modules/@stryker-mutator/core/schema/stryker-schema.json',
+    ...(runner ? { testRunner: runner } : {}),
+    reporters: ['html', 'clear-text', 'progress'],
+    coverageAnalysis: 'perTest',
+    thresholds: { high: 80, low: 60, break: 0 },
+  };
+}
+
+/** Mutation-testing command for the stack (Stryker family / mutmut). */
+export function mutationCommand(stack: ProjectStack): string {
+  if (stack.packageManager) {
+    // Thresholds and runner live in stryker.config.json (generated next to the workflow).
+    const runner = strykerRunner(stack);
+    return `npx -y -p @stryker-mutator/core${runner ? ` -p @stryker-mutator/${runner}-runner` : ''} stryker run`;
+  }
+  if (stack.frameworks.includes('.NET')) {
+    return 'dotnet tool install -g dotnet-stryker && dotnet stryker --break-at "$(jq -r \'.mutation.break // 0\' quality.config.json)"';
+  }
+  if (stack.languages[0] === 'Python') return 'pip install mutmut && mutmut run && mutmut results';
+  return 'echo "No mutation tool configured for this stack"';
+}
+
 function writeIfAbsent(root: string, rel: string, content: string, force: boolean, out: GeneratedFiles): void {
   const abs = path.join(root, rel);
   if (fs.existsSync(abs) && !force) { out.skipped.push(rel); return; }
@@ -90,6 +119,7 @@ export function qualityConfig(stack: ProjectStack): Record<string, unknown> {
     specPaths: ['openspec/', 'docs/decisions/', 'docs/adr/', '.squad/decisions', 'features/'],
     docsPaths: ['docs/', 'README.md', 'ARCHITECTURE.md', 'AGENTS.md'],
     coverage: { lines: 0 },
+    mutation: { break: 0 },
     diff: { maxCommentRatio: 0.1, maxTestToCodeRatio: 1, maxTestsPerKloc: 40 },
     mergeGate: { maxChangedLines: 10000, botAuthors: ['[bot]', 'copilot', 'squad'] },
   };
@@ -111,6 +141,18 @@ export function generateGates(root: string, opts: GatesOptions = {}): GeneratedF
   writeIfAbsent(root, '.github/workflows/pc-pr-guardrails.yml', fs.readFileSync(path.join(tpl, 'workflows', 'pc-pr-guardrails.yml'), 'utf8'), force, out);
   if (opts.mergeGate !== false) {
     writeIfAbsent(root, '.github/workflows/pc-merge-gate.yml', fs.readFileSync(path.join(tpl, 'workflows', 'pc-merge-gate.yml'), 'utf8'), force, out);
+  }
+  const codeDirs = (qualityConfig(stack).appPaths as string[]).join(' ') || '.';
+  const weekly = fs.readFileSync(path.join(tpl, 'workflows', 'pc-weekly-quality.yml'), 'utf8')
+    .replace('{{SETUP_STEPS}}', cmds.setup)
+    .replace('{{INSTALL_COMMAND}}', cmds.install)
+    .replace('{{MUTATION_COMMAND}}', mutationCommand(stack))
+    .replace('{{CODE_DIRS}}', codeDirs);
+  writeIfAbsent(root, '.github/workflows/pc-weekly-quality.yml', weekly, force, out);
+  if (stack.packageManager) writeIfAbsent(root, 'stryker.config.json', JSON.stringify(strykerConfig(stack), null, 2) + '\n', force, out);
+  // Delivery metrics: label every Squad PR, compute metrics weekly.
+  for (const wf of ['pc-squad-labels.yml', 'pc-metrics.yml']) {
+    writeIfAbsent(root, `.github/workflows/${wf}`, fs.readFileSync(path.join(tpl, 'workflows', wf), 'utf8'), force, out);
   }
   for (const f of fs.readdirSync(path.join(tpl, 'scripts'))) {
     // Scripts are squad-owned: always refreshed so fixes propagate.

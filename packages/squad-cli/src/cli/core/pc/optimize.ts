@@ -424,6 +424,11 @@ export async function runOptimizeCommand(root: string, args: string[]): Promise<
       console.log('The business-intake skill triages issues labelled business-request against PRODUCT_SCOPE.md.');
       return;
     }
+    case 'metrics': {
+      const { runMetricsCommand } = await import('./metrics.js');
+      await runMetricsCommand(root, ['setup', ...(args.includes('--force') ? ['--force'] : [])]);
+      return;
+    }
     case 'mcp': {
       console.log(`${GREEN}✓${RESET} ${registerContextMcp(root)} → squad-context (tools: repo_map, project_stack, aidlc_assessment, find_symbol)`);
       return;
