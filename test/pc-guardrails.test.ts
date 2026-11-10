@@ -45,7 +45,7 @@ describe('gates', () => {
     const wf = fs.readFileSync(path.join(dir, '.github/workflows/pc-quality-gates.yml'), 'utf8');
     expect(wf).not.toMatch(/\{\{[A-Z_]+\}\}/);
     expect(wf).toContain('vitest run --coverage');
-    expect(wf).toContain('actions/setup-node@v4');
+    expect(wf).toMatch(/actions\/setup-node@[0-9a-f]{40} # v\d/);
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'quality.config.json'), 'utf8')).appPaths).toEqual(['src/']);
     // never clobbers user-edited workflows
     write('.github/workflows/pc-quality-gates.yml', '# mine');

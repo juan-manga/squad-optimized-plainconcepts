@@ -27,16 +27,22 @@ export const MODEL_PREFIX = 'squad:model:';
 
 // ── Parsing ────────────────────────────────────────────────────────────────
 
+const TRAILERS = {
+  agent: /^\s*Squad-Agent:[ \t]*(\S[^\n]*?)[ \t]*$/im,
+  role: /^\s*Squad-Role:[ \t]*(\S[^\n]*?)[ \t]*$/im,
+  model: /^\s*Squad-Model:[ \t]*(\S[^\n]*?)[ \t]*$/im,
+};
+
 /** Squad metadata from labels first, then PR body trailers (Squad-Agent / Squad-Role / Squad-Model). */
 export function parseSquadMeta(pr) {
   const labels = (pr.labels ?? []).map((l) => (typeof l === 'string' ? l : l.name));
   const fromLabel = (prefix) => labels.find((l) => l.startsWith(prefix))?.slice(prefix.length);
-  const fromBody = (key) => new RegExp(`^\\s*${key}:\\s*(.+?)\\s*$`, 'im').exec(pr.body ?? '')?.[1];
+  const fromBody = (re) => re.exec(pr.body ?? '')?.[1];
   return {
     isSquad: labels.includes(LABELS.squad.name),
-    agent: fromLabel(AGENT_PREFIX) ?? fromBody('Squad-Agent') ?? null,
-    role: fromLabel(ROLE_PREFIX) ?? fromBody('Squad-Role') ?? null,
-    model: fromLabel(MODEL_PREFIX) ?? fromBody('Squad-Model') ?? null,
+    agent: fromLabel(AGENT_PREFIX) ?? fromBody(TRAILERS.agent) ?? null,
+    role: fromLabel(ROLE_PREFIX) ?? fromBody(TRAILERS.role) ?? null,
+    model: fromLabel(MODEL_PREFIX) ?? fromBody(TRAILERS.model) ?? null,
     autoMerged: labels.includes(LABELS.autoMerged.name),
     humanReview: labels.includes(LABELS.humanReview.name),
   };

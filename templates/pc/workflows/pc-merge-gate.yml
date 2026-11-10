@@ -18,7 +18,7 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Classify risk
@@ -29,8 +29,22 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: node .github/scripts/pc-merge-gate.mjs >> "$GITHUB_OUTPUT"
-      - name: Enable auto-merge (gate decides, required checks still apply)
+      - name: Require status checks on the base branch
+        id: guard
         if: steps.risk.outputs.disposition == 'auto-merge'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # Without required status checks, `gh pr merge --auto` merges immediately — even
+          # while gates are still running or failing. Refuse to auto-merge in that case.
+          required=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$BASE_REF" --jq '[.[] | select(.type == "required_status_checks")] | length' 2>/dev/null || echo 0)
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          if [ "$required" = "0" ]; then
+            echo "::warning::No ruleset with required status checks on $BASE_REF — auto-merge refused. Make the pc-quality-gates and pc-pr-guardrails jobs required checks."
+          fi
+      - name: Enable auto-merge (gate decides, required checks still apply)
+        if: steps.risk.outputs.disposition == 'auto-merge' && steps.guard.outputs.required != '0'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -38,6 +52,16 @@ jobs:
           gh label create squad:auto-merged --color 0e8a16 --description "Merged by the merge gate with no human review" 2>/dev/null || true
           gh pr edit "$PR_NUMBER" --add-label squad:auto-merged
           gh pr merge "$PR_NUMBER" --auto --squash
+      - name: Explain refused auto-merge
+        if: steps.risk.outputs.disposition == 'auto-merge' && steps.guard.outputs.required == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # Comment once per PR, not on every push/label event.
+          gh pr view "$PR_NUMBER" --json comments --jq '.comments[].body' | grep -q '^Merge gate: this PR qualifies' && exit 0
+          gh pr comment "$PR_NUMBER" --body "Merge gate: this PR qualifies for auto-merge, but \`$BASE_REF\` has no ruleset with required status checks, so merging now could skip running gates. Add the \`pc-quality-gates\` and \`pc-pr-guardrails\` jobs as required checks (Settings → Rules → Rulesets) and re-run this workflow."
       - name: Request human review
         if: steps.risk.outputs.disposition == 'human-review'
         env:
@@ -45,5 +69,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REASON: ${{ steps.risk.outputs.reason }}
         run: |
-          gh pr edit "$PR_NUMBER" --add-label human-review || true
+          gh label create human-review --color d93f0b --description "Merge gate: human checkpoint hit" 2>/dev/null || true
+          gh pr edit "$PR_NUMBER" --add-label human-review
+          gh pr view "$PR_NUMBER" --json comments --jq '.comments[].body' | grep -qF "Merge gate: human review required — $REASON" && exit 0
           gh pr comment "$PR_NUMBER" --body "Merge gate: human review required — $REASON"
