@@ -1,0 +1,67 @@
+# Squad Optimized — Plain Concepts: installable release.
+# On a `pc-v*` tag, builds the SDK and CLI and attaches two tarballs to a GitHub Release:
+#   squad-sdk.tgz  and  squad-cli.tgz (its SDK dependency points at this release's squad-sdk.tgz)
+# so anyone can install with one command, without an npm registry:
+#   npm install -g https://github.com/<owner>/<repo>/releases/latest/download/squad-cli.tgz --allow-scripts=@bradygaster/squad-cli
+name: pc-release
+
+on:
+  push:
+    tags: ['pc-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, e.g. pc-v2.0.0-preview.3.pc.1'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.repository != 'bradygaster/squad'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Set version from tag
+        run: |
+          VERSION="${TAG#pc-v}"
+          npm version "$VERSION" -w packages/squad-sdk -w packages/squad-cli --no-git-tag-version --allow-same-version
+      - name: Build SDK and CLI
+        run: |
+          npm run build -w packages/squad-sdk
+          npm run build -w packages/squad-cli
+      - name: Pack tarballs
+        run: |
+          mkdir -p release
+          npm pack -w packages/squad-sdk --pack-destination release
+          mv release/bradygaster-squad-sdk-*.tgz release/squad-sdk.tgz
+          # The CLI must use THIS release's SDK, never the upstream one from the npm registry.
+          node -e "const f='packages/squad-cli/package.json';const p=require('./'+f);p.dependencies['@bradygaster/squad-sdk']='https://github.com/${{ github.repository }}/releases/download/'+process.env.TAG+'/squad-sdk.tgz';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+          npm pack -w packages/squad-cli --pack-destination release
+          mv release/bradygaster-squad-cli-*.tgz release/squad-cli.tgz
+          ls -l release
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          Squad Optimized — Plain Concepts \`${TAG#pc-v}\`
+
+          Install (Node 22.5+):
+
+          \`\`\`bash
+          npm install -g https://github.com/${{ github.repository }}/releases/download/${TAG}/squad-cli.tgz --allow-scripts=@bradygaster/squad-cli
+          \`\`\`
+
+          Then, in any project: \`squad init\`.
+          EOF
+          gh release create "$TAG" release/squad-sdk.tgz release/squad-cli.tgz --title "Squad Optimized — Plain Concepts ${TAG#pc-v}" --notes-file notes.md --target "$GITHUB_SHA"

@@ -1,21 +1,71 @@
 # Squad Optimized — Plain Concepts
 
-> Fork of [bradygaster/squad](https://github.com/bradygaster/squad) built to take any project from **AIDLC 0 to 4–5** following the [Plain Concepts Platform](https://platform.plainconcepts.dev) method: an agent team plus the instructions, specs, skills, token savers and CI guardrails that let agents ship safely on their own. Everything upstream still works; this section documents what the fork adds. The original Squad docs follow below.
+> **A squad generator.** You install this tool once on your machine, then run `squad init` inside any project to give it an AI agent team plus the instructions, specs, skills, token savers and CI guardrails needed to go from **AIDLC 0 to 4–5** following the [Plain Concepts Platform](https://platform.plainconcepts.dev) method. This repository only contains the generator; your projects keep their own code and simply receive the generated files.
+>
+> Fork of [bradygaster/squad](https://github.com/bradygaster/squad). Everything upstream still works; this section documents what the fork adds, and the original Squad docs follow below.
 
-**Contents:** [Quick start](#quick-start) · [The installer](#the-installer-squad-init) · [AIDLC levels](#aidlc-maturity-levels-squad-aidlc) · [Commands](#squad-optimize-commands) · [Features](#features-in-detail) · [Metrics](#delivery-metrics-squad-metrics) · [Generated files](#files-the-optimizer-generates) · [Config](#squadconfigjson-keys) · [Fork maintenance](#maintaining-the-fork) · [Limitations](#known-limitations)
+**Contents:** [Install](#install) · [Use it in a project](#use-it-in-a-project) · [The installer](#the-installer-squad-init) · [AIDLC levels](#aidlc-maturity-levels-squad-aidlc) · [Commands](#squad-optimize-commands) · [Features](#features-in-detail) · [Metrics](#delivery-metrics-squad-metrics) · [Generated files](#files-the-optimizer-generates) · [Config](#squadconfigjson-keys) · [Fork maintenance](#maintaining-the-fork) · [Limitations](#known-limitations)
 
-## Quick start
+## Install
+
+**Requirements:** Node.js 22.5 or newer, npm, and git. Optional extras the wizard can use: [RTK](https://github.com/rtk-ai/rtk) (`winget install rtk-ai.rtk` / `brew install rtk`) for shell-output token savings, and Python 3.10+ for [graphify](https://github.com/Graphify-Labs/graphify) (`uv tool install graphifyy`). Plus at least one AI host: GitHub Copilot (VS Code or Copilot CLI), Claude Code or OpenCode.
+
+### Option A — from a release (recommended)
+
+One command, no npm registry or clone needed:
+
+```bash
+npm install -g https://github.com/juan-manga/squad-optimized-plainconcepts/releases/latest/download/squad-cli.tgz --allow-scripts=@bradygaster/squad-cli
+```
+
+`--allow-scripts` lets the CLI's post-install step run (npm 11 blocks install scripts by default); it patches an ESM import in the Copilot SDK that Node 22+ rejects otherwise. To pin a version, replace `latest/download` with `download/<tag>` from the [releases page](https://github.com/juan-manga/squad-optimized-plainconcepts/releases).
+
+Check it:
+
+```bash
+squad --version
+squad help
+```
+
+`squad help` must list `optimize`, `aidlc`, `metrics` and `context-mcp`; if it doesn't, you are running the upstream Squad (see the note below).
+
+### Option B — from source (contributors)
 
 ```bash
 git clone https://github.com/juan-manga/squad-optimized-plainconcepts.git
 cd squad-optimized-plainconcepts
 npm ci
-npm run dev:link          # builds the SDK + CLI and links the `squad` command
+npm run dev:link
 ```
 
-Then, inside the project you want to level up:
+`dev:link` builds the SDK and CLI and links the `squad` command globally to your clone, so `git pull && npm run build` updates it. Undo with `npm run dev:unlink`.
+
+### Update and uninstall
 
 ```bash
+npm install -g https://github.com/juan-manga/squad-optimized-plainconcepts/releases/latest/download/squad-cli.tgz --allow-scripts=@bradygaster/squad-cli
+npm uninstall -g @bradygaster/squad-cli
+```
+
+> **Same package name as upstream.** The fork keeps the `@bradygaster/squad-cli` / `squad-sdk` package names, so installing it **replaces** a global upstream Squad, and `npm update -g` would swap it back to upstream from the npm registry. Always update with the release command above. Never install `@bradygaster/squad-cli` from npm on the same machine unless you want the original.
+
+### Publishing a release (maintainers)
+
+Releases are built by `.github/workflows/pc-release.yml` when you push a tag starting with `pc-v`; the tag becomes the version:
+
+```bash
+git tag pc-v2.0.0-preview.3.pc.1
+git push origin pc-v2.0.0-preview.3.pc.1
+```
+
+The workflow builds both packages, attaches `squad-sdk.tgz` and `squad-cli.tgz` to a GitHub Release, and points the CLI's SDK dependency at that same release, so the CLI never pulls the upstream SDK. GitHub Actions must be enabled on the fork (Actions tab → enable).
+
+## Use it in a project
+
+Inside the project you want to level up (not inside this repository):
+
+```bash
+cd path/to/your-project
 squad init                # interactive wizard
 squad aidlc               # where you are (0–5) and the roadmap to the next level
 ```
@@ -26,6 +76,8 @@ Non-interactive (CI, scripts, devcontainers):
 squad init --yes --client copilot,claude,opencode     # accept every recommended answer
 squad init --yes --offline --no-gates                 # local generators only, no CI files
 ```
+
+Then open the project in your AI host and talk to the Squad agent: `copilot --agent squad`, `claude --agent squad`, or select **Squad** in VS Code / OpenCode, and describe what you're building so it casts the team.
 
 Typical path to level 4–5: `squad init` → let the team cast itself → `squad optimize gates` → make the `pc-*` jobs required checks → write OpenSpec specs → `squad optimize specs` → enable auto-merge for the merge gate → `squad metrics labels` and watch `squad metrics` → `squad optimize platform` and register in Project Health.
 
@@ -240,7 +292,7 @@ Role categories: `lead`, `frontend`, `backend`, `tester`, `devops`, `docs`, `dat
 - **Templates:** edit `.squad-templates/` (including `.squad-templates/pc/` for gate workflows/scripts and platform files), then run `npm run sync-templates`.
 - **Code:** the optimizer lives in `packages/squad-cli/src/cli/core/pc/` (`optimize.ts` wizard, `stack.ts`, `repomap.ts`, `instructions.ts`, `skills-catalog.ts`, `tools.ts`, `gates.ts`, `specs.ts`, `platform.ts`, `models-catalog.ts`, `context-mcp.ts`, `metrics.ts`, `aidlc.ts`); role models and icons in `packages/squad-sdk/src/config/role-models.ts`; the metrics engine and gate scripts in `.squad-templates/pc/scripts/`.
 - **Tests:** `npx vitest run test/pc-optimizer.test.ts test/pc-guardrails.test.ts test/pc-metrics.test.ts`.
-- **Distribution:** today install from a clone (`npm run dev:link`) or build tarballs with `npm run build && npm pack -w packages/squad-sdk -w packages/squad-cli` and `npm i -g ./bradygaster-squad-cli-*.tgz`. Publishing to npm under a Plain Concepts scope needs the packages renamed and an npm org token; it is not done yet.
+- **Distribution:** GitHub Releases built by `pc-release.yml` (see [Install](#install)). Publishing to the npm registry under a Plain Concepts scope would need the packages renamed and an npm org token; it is not done.
 
 ## Known limitations
 

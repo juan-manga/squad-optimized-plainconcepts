@@ -24,11 +24,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Locations where npm workspaces / global install may place dependencies
 const _cwdNodeModules = join(process.cwd(), 'node_modules');
-const SEARCH_ROOTS = [
+const BASE_ROOTS = [
   join(__dirname, '..', 'node_modules'),              // squad-cli local
   join(__dirname, '..', '..', '..', 'node_modules'),  // workspace root
   join(__dirname, '..', '..'),                         // global install (sibling)
   _cwdNodeModules,                                     // consumer project (cwd)
+];
+// npm may also nest a second vscode-jsonrpc copy under @github/copilot-sdk when
+// versions don't dedupe (seen on global tarball installs) — patch that copy too.
+const SEARCH_ROOTS = [
+  ...BASE_ROOTS,
+  ...BASE_ROOTS.map((r) => join(r, '@github', 'copilot-sdk', 'node_modules')),
 ].filter((p, i, arr) => arr.indexOf(p) === i);         // deduplicate
 
 /**
