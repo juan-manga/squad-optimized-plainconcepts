@@ -4,7 +4,7 @@
 >
 > Fork of [bradygaster/squad](https://github.com/bradygaster/squad). Everything upstream still works; this section documents what the fork adds, and the original Squad docs follow below.
 
-**Contents:** [Install](#install) · [Use it in a project](#use-it-in-a-project) · [The installer](#the-installer-squad-init) · [AIDLC levels](#aidlc-maturity-levels-squad-aidlc) · [Commands](#squad-optimize-commands) · [Features](#features-in-detail) · [Metrics](#delivery-metrics-squad-metrics) · [Generated files](#files-the-optimizer-generates) · [Config](#squadconfigjson-keys) · [Fork maintenance](#maintaining-the-fork) · [Limitations](#known-limitations)
+**Contents:** [Install](#install) · [Use it in a project](#use-it-in-a-project) · [The installer](#the-installer-squad-init) · [AIDLC levels](#aidlc-maturity-levels-squad-aidlc) · [Commands](#squad-optimize-commands) · [Features](#features-in-detail) · [Metrics](#delivery-metrics-squad-metrics) · [Generated files](#files-the-optimizer-generates) · [Config](#squadconfigjson-keys) · [Fork maintenance](#maintaining-the-fork)
 
 ## Install
 
@@ -293,18 +293,6 @@ Role categories: `lead`, `frontend`, `backend`, `tester`, `devops`, `docs`, `dat
 - **Code:** the optimizer lives in `packages/squad-cli/src/cli/core/pc/` (`optimize.ts` wizard, `stack.ts`, `repomap.ts`, `instructions.ts`, `skills-catalog.ts`, `tools.ts`, `gates.ts`, `specs.ts`, `platform.ts`, `models-catalog.ts`, `context-mcp.ts`, `metrics.ts`, `aidlc.ts`); role models and icons in `packages/squad-sdk/src/config/role-models.ts`; the metrics engine and gate scripts in `.squad-templates/pc/scripts/`.
 - **Tests:** `npx vitest run test/pc-optimizer.test.ts test/pc-guardrails.test.ts test/pc-metrics.test.ts`.
 - **Distribution:** GitHub Releases built by `pc-release.yml` (see [Install](#install)). Publishing to the npm registry under a Plain Concepts scope would need the packages renamed and an npm org token; it is not done.
-
-## Known limitations
-
-- The 0–5 AIDLC scale is this fork's mapping of the Plain Concepts Platform levels and practices; the Platform docs themselves define L0–L3 engineering levels, not "AIDLC 0–5".
-- AIDLC checks are heuristics over files and CI content; they detect that a practice is configured, not that its last run was green.
-- Repo map symbols come from regular expressions, not tree-sitter; unusual syntax can be missed.
-- Only `find-skills` and OpenSpec installs were exercised end to end; other skill identifiers come from skills.sh listings and may move.
-- Validated live in [juan-manga/squad-pc-playground](https://github.com/juan-manga/squad-pc-playground): quality gates green on `main`, Squad labels applied by the workflow, spec/diff/AIDLC guardrails, merge gate auto-merge, refusal without required checks, `human-review` on `.github/` changes, and the weekly metrics report. The .NET, Python and Go toolchain branches of the generated workflows have not been run live yet.
-- Mutation, complexity and DAST run weekly and report; they are not required PR checks. DAST needs a deployed URL in `DAST_TARGET_URL`.
-- `squad metrics` only sees PRs that carry the `squad` label: PRs opened before the labelling workflow existed must be labelled by hand (or opened from `squad/*` branches). GitHub search caps a window at 1,000 PRs.
-- The AI share counts PRs, not commits as the Platform's AI-usage metric does; treat the bucket as an approximation.
-- The local `squad metrics` command needs a token (`GITHUB_TOKEN`, `GH_TOKEN` or `gh auth login`); the `pc-metrics` workflow uses the built-in Actions token.
 
 ---
 
